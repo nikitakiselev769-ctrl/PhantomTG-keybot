@@ -1,77 +1,86 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.types import Message, PreCheckoutQuery, LabeledPrice, ContentType
-import sqlite3
+import os
 import random
 import string
-import uuid
+import sqlite3
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import Message, PreCheckoutQuery, LabeledPrice, SuccessfulPayment
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, run_app
+from aiohttp import web
 
-# ──────── НАСТРОЙКИ ────────
-BOT_TOKEN = "8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA"  # твой токен уже тут
-ADMIN_ID = 6895862356  # ←←←←← СЮДА ВСТАВЬ СВОЙ ТЕЛЕГРАМ ID (обязательно!)
-
-# Цены (можно менять)
-PRICE_RUB = 1490
-PRICE_USDT = 17
-PRICE_TON = 500
-
-# CryptoBot токен (пока оставь пустым, потом вставишь)
-CRYPTOBOT_TOKEN = ""
+# ──────── НАСТРОЙКИ из переменных Render ────────
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # твой ID
+PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "381764678:TEST:749945490")  # тестовый или боевой
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher()
 
 # База данных
-conn = sqlite3.connect('keys.db')
+conn = sqlite3.connect("keys.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS keys 
-             (key_text TEXT, used INTEGER, user_id INTEGER, android_id TEXT, tg_id INTEGER)''')
+             (key_text TEXT PRIMARY KEY, used INTEGER, user_id INTEGER, android_id TEXT, tg_id INTEGER)''')
 c.execute('''CREATE TABLE IF NOT EXISTS payments 
              (user_id INTEGER, amount INTEGER, currency TEXT, date TEXT)''')
 conn.commit()
 
 def generate_key():
-    return "PH-" + "".join(random.choices(string.asciiUpperCase + string.digits, k=6)) + \
-           "-" + "".join(random.choices(string.asciiUpperCase + string.digits, k=6)) + \
-           "-" + "".join(random.choices(string.asciiUpperCase + string.digits, k=6))
+    parts = []
+    for _ in range(3):
+        parts.append("".join(random.choices(string.asciiUpperCase + string.digits, k=6)))
+    return "PH-" + "-".join(parts)
 
 # ──────── КОМАНДЫ ────────
 @dp.message(Command("start"))
 async def start(message: Message):
     kb = [
         [types.KeyboardButton(text="Купить ключ навсегда — 1490 ₽")],
-        [types.KeyboardButton(text="Оплата криптой (USDT/TON)")],
         [types.KeyboardButton(text="Проверить ключ")],
+        [types.KeyboardButton(text="Поддержка")],
     ]
     keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
     await message.answer(
         "🔥 <b>PhantomTG Premium</b>\n\n"
         "Одноразовый ключ навсегда — 1490 ₽\n"
-        "После оплаты все функции мода открываются навсегда.\n\n"
-        "Выбери способ оплаты 👇",
-        reply_markup=keyboard, parse_mode="HTML"
+        "Все функции мода открываются навсегда после оплаты.\n\n"
+        "Выбери действие 👇",
+        reply_markup=keyboard
     )
 
 @dp.message(F.text == "Купить ключ навсегда — 1490 ₽")
 async def buy_rub(message: Message):
-    prices = [LabeledPrice(label="PhantomTG Premium навсегда", amount=PRICE_RUB * 100)]
     await bot.send_invoice(
         chat_id=message.chat.id,
         title="PhantomTG Premium — навсегда",
-        description="Одноразовый ключ для полного доступа ко всем функциям мода",
-        payload="premium_key",
-        provider_token="381764678:TEST:749945490",  # ← ТЕСТОВЫЙ ТОКЕН (потом заменишь на боевой ЮKassa/CrystalPay)
+        description="Полный доступ ко всем функциям мода навсегда",
+        payload="premium_key_1490",
+        provider_token=PROVIDER_TOKEN,
         currency="RUB",
-        prices=prices,
-        start_parameter="phantomtg"
+        prices=[LabeledPrice(label="PhantomTG Premium", amount=1490 * 100)],
+        start_parameter="phantomtg-premium"
     )
 
 @dp.message(F.text == "Проверить ключ")
 async def check_key(message: Message):
     await message.answer("Пришли мне ключ в формате PH-XXXXXX-XXXXXX-XXXXXX")
+
+@dp.message(F.text.startswith("PH-"))
+async def activate_key(message: Message):
+    key = message.text.strip()
+    c.execute("SELECT used FROM keys WHERE key_text = ?", (key,))
+    row = c.fetchone()
+    if row and row[0] == 0:
+        c.execute("UPDATE keys SET used = 1, user_id = ? WHERE key_text = ?", (message.from_user.id, key))
+        conn.commit()
+        await message.answer("✅ Ключ успешно активирован!\nВсе функции мода открыты навсегда 🔥")
+    elif row and row[0] == 1:
+        await message.answer("❌ Этот ключ уже использован")
+    else:
+        await message.answer("❌ Ключ не найден")
 
 # ──────── ОПЛАТА ────────
 @dp.pre_checkout_query()
@@ -80,31 +89,53 @@ async def pre_checkout(query: PreCheckoutQuery):
 
 @dp.message(F.successful_payment)
 async def successful_payment(message: Message):
+    payload = message.successful_payment.invoice_payload
     user_id = message.from_user.id
     key = generate_key()
+    
     c.execute("INSERT INTO keys (key_text, used, user_id) VALUES (?, 0, ?)", (key, user_id))
     conn.commit()
     
     await message.answer(
         "✅ <b>Оплата прошла успешно!</b>\n\n"
         f"🔑 Твой ключ: <code>{key}</code>\n\n"
-        "Зайди в мод → Настройки → Активация → вставить ключ\n"
-        "Функции откроются навсегда ✊\n\n"
+        "Зайди в мод → Настройки → Активация → вставить этот ключ\n"
+        "Функции открываются навсегда ✊\n\n"
         "Скачать мод: @PhantomTG_official",
-        parse_mode="HTML"
+        disable_web_page_preview=True
     )
 
-# ──────── АДМИНКА ────────
+# Админка
 @dp.message(Command("panel"))
-async def admin_panel(message: Message):
+async def panel(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
-    c.execute("SELECT COUNT(*) FROM payments")
-    sales = c.fetchone()[0]
-    await message.answer(f"Продано ключей: {sales}\nСделай /stats для полной статистики")
+    c.execute("SELECT COUNT(*) FROM keys")
+    total = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM keys WHERE used = 1")
+    sold = c.fetchone()[0]
+    await message.answer(f"Всего ключей: {total}\nПродано: {sold}")
+
+# ──────── WEBHOOK ЗАПУСК ДЛЯ RENDER ────────
+async def on_startup(dispatcher: Dispatcher):
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}{os.getenv('RENDER_EXTERNAL_URL_PATH', '')}/webhook"
+    await bot.set_webhook(webhook_url)
+    logging.info(f"Webhook установлен: {webhook_url}")
 
 async def main():
-    await dp.start_polling(bot)
+    # Запуск webhook-сервера
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    app.on_startup.append(lambda _: on_startup(dp))
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 10000)))
+    await site.start()
+    logging.info("Бот запущен на Render!")
+    
+    # Держим процесс живым
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
