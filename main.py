@@ -8,13 +8,13 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, PreCheckoutQuery, LabeledPrice, SuccessfulPayment
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
 # ──────── НАСТРОЙКИ из переменных Render ────────
 BOT_TOKEN = os.getenv("8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA")
 ADMIN_ID = int(os.getenv("6895862356"))  # твой ID
-PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "381764678:TEST:749945490")  # тестовый или боевой
+PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")  # тестовый или боевой
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
@@ -161,24 +161,25 @@ async def generate_manual_key(message: Message):
     conn.commit()
     await message.answer(f"🔑 Ручной ключ: <code>{key}</code>\n(Выдай пользователю вручную)", parse_mode="HTML")
 
-# ──────── WEBHOOK ДЛЯ RENDER ────────
-async def on_startup(_):
+# ──────── WEBHOOK ДЛЯ RENDER (по официальной docs aiogram 3.x) ────────
+async def on_startup(app: web.Application):
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{os.getenv('RENDER_EXTERNAL_URL_PATH', '')}/webhook"
     await bot.set_webhook(webhook_url)
     logging.info(f"✅ Webhook установлен: {webhook_url}")
 
-async def on_shutdown(dp: Dispatcher):
+async def on_shutdown(app: web.Application):
     await bot.delete_webhook()
 
-def create_app() -> web.Application:
+async def main():
+    # Создаём aiohttp app
     app = web.Application()
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
-    return app
-
-async def main():
-    app = create_app()
+    
+    # Регистрируем webhook хендлер aiogram
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    
+    # Запуск сервера на Render (порт из env)
     port = int(os.getenv("PORT", 10000))
     runner = web.AppRunner(app)
     await runner.setup()
