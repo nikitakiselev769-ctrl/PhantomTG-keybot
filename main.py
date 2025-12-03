@@ -17,7 +17,8 @@ ADMIN_ID = 6895862356
 PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+from aiogram.client.default import DefaultBotProperties
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # База данных
