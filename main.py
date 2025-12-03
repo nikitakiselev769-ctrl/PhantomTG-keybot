@@ -13,7 +13,7 @@ from aiohttp import web
 
 # ──────── НАСТРОЙКИ из переменных Render ────────
 BOT_TOKEN = os.getenv("8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA")
-ADMIN_ID = User ID:  6895862356
+ADMIN_ID = 6895862356
 PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")
 
 logging.basicConfig(level=logging.INFO)
