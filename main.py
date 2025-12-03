@@ -13,7 +13,7 @@ from aiohttp import web
 
 # ──────── НАСТРОЙКИ из переменных Render ────────
 BOT_TOKEN = os.getenv("8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA")
-ADMIN_ID = int(os.getenv("6895862356"))  # твой ID
+ADMIN_ID = User ID:  6895862356  # ←←←←← ВСТАВЬ СВОЙ ТЕЛЕГРАМ ID СЮДА ЦИФРАМИ (например 684511234)
 PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")  # тестовый или боевой
 
 logging.basicConfig(level=logging.INFO)
