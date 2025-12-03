@@ -8,16 +8,13 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, PreCheckoutQuery, LabeledPrice, SuccessfulPayment
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
+from aiogram.client.default import DefaultBotProperties
 
-# ──────── НАСТРОЙКИ из переменных Render ────────
-BOT_TOKEN = "8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA"
+# ──────── НАСТРОЙКИ ────────
+BOT_TOKEN = "8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA" 
 ADMIN_ID = 6895862356
-PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")
 
 logging.basicConfig(level=logging.INFO)
-from aiogram.client.default import DefaultBotProperties
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
@@ -64,7 +61,7 @@ async def buy_rub_handler(message: Message):
         title="🔑 PhantomTG Premium — навсегда",
         description="Полный доступ ко всем функциям мода. Ключ активируется один раз и работает вечно!",
         payload=f"premium_key_{message.from_user.id}",
-        provider_token=PROVIDER_TOKEN,
+        provider_token="381764678:TEST:749945490",  # тестовый, потом боевой
         currency="RUB",
         prices=prices,
         start_parameter="phantomtg_buy"
@@ -74,7 +71,7 @@ async def buy_rub_handler(message: Message):
 async def check_key_handler(message: Message):
     await message.answer("📝 Пришли ключ в формате <code>PH-XXXXXX-XXXXXX-XXXXXX</code>\n\nПример: PH-A1B2C3-D4E5F6-G7H8I9", parse_mode="HTML")
 
-@dp.message(F.text.startswith("PH-") & F.text.len >= 20)  # Проверка формата ключа
+@dp.message(F.text.startswith("PH-") & F.text.len >= 20)
 async def validate_key_handler(message: Message):
     key = message.text.strip()
     c.execute("SELECT used, user_id FROM keys WHERE key_text = ?", (key,))
@@ -124,7 +121,6 @@ async def successful_payment_handler(message: Message, successful_payment: Succe
         "Функции откроются мгновенно! ✊\n\n"
         "Нажми кнопку ниже для активации в боте:",
         reply_markup=keyboard,
-        parse_mode="HTML",
         disable_web_page_preview=True
     )
 
@@ -162,34 +158,15 @@ async def generate_manual_key(message: Message):
     conn.commit()
     await message.answer(f"🔑 Ручной ключ: <code>{key}</code>\n(Выдай пользователю вручную)", parse_mode="HTML")
 
-# ──────── WEBHOOK ДЛЯ RENDER (по официальной docs aiogram 3.x) ────────
-async def on_startup(app: web.Application):
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{os.getenv('RENDER_EXTERNAL_URL_PATH', '')}/webhook"
-    await bot.set_webhook(webhook_url)
-    logging.info(f"✅ Webhook установлен: {webhook_url}")
-
-async def on_shutdown(app: web.Application):
-    await bot.delete_webhook()
-
+# ──────── POLLING ЗАПУСК (для Render) ────────
 async def main():
-    # Создаём aiohttp app
-    app = web.Application()
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
+    # Удаляем старый webhook
+    await bot.delete_webhook(drop_pending_updates=True)
+    logging.info("🧹 Старый webhook удалён, переходим на polling")
     
-    # Регистрируем webhook хендлер aiogram
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
-    
-    # Запуск сервера на Render (порт из env)
-    port = int(os.getenv("PORT", 10000))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logging.info(f"🚀 Бот запущен на Render на порту {port}!")
-    
-    # Держим сервер живым
-    await asyncio.Event().wait()
+    # Запуск polling
+    await dp.start_polling(bot)
+    logging.info("🚀 Бот запущен на polling!")
 
 if __name__ == "__main__":
     try:
