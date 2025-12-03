@@ -12,7 +12,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 # ──────── НАСТРОЙКИ из переменных Render ────────
-BOT_TOKEN = os.getenv("8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA")
+BOT_TOKEN = "8458741733:AAFEUhMaLJJdmDiyJ1cQgoNSlqXTxUCi6OA"
 ADMIN_ID = 6895862356
 PROVIDER_TOKEN = os.getenv("381764678:TEST:749945490")
 
